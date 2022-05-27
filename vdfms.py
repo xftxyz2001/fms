@@ -1,5 +1,6 @@
 import math
 import os
+import traceback
 
 FILE_NAME = "vdisk.dat"
 vdisk = ...  # 虚拟磁盘文件
@@ -105,6 +106,9 @@ def vdisk_nextblock(block_num):
 
 
 # 得到块号列表
+# in vdisk_nextblock
+#     v = FAT[block_num]
+# TypeError: list indices must be integers or slices, not NoneType
 def vdisk_getblocklist(block_num):
     block_numlist = []
     while block_num != END_FLAG:
@@ -253,9 +257,12 @@ def format_disk(*args):
     vdisk_init()
 
 
+# in vdisk_gwd
+#     return '/'.join(ds)
+# TypeError: sequence item 0: expected str instance, list found
 def vdisk_gwd(*args):
     global dir_stack
-    ds = args[0] if len(args) != 0 else dir_stack
+    ds = args[0] if len(args) > 0 else [d[0] for d in dir_stack]
     if len(ds) > 1:
         return '/'.join(ds)
     return '/'
@@ -277,13 +284,17 @@ def show_diritems(dir_files):
 
 
 # 路径解析，返回该目录的绝对路径栈
+# bug:创建文件后当前路径改变
+# /]>>>md a
+# 目录创建成功
+# /a]>>>
 def path_decode(spath):
     global dir_stack, current_dir_files
     mypath = []
     temp_dir_files = []
     if not spath.startswith('/'):
-        mypath = dir_stack
-        temp_dir_files = current_dir_files
+        mypath = dir_stack[:]
+        temp_dir_files = current_dir_files[:]
     for p in spath.split('/'):
         if p == '..':
             if len(mypath) > 1:
@@ -368,7 +379,7 @@ def create_dir(path_stack):
 # 写文件（write_file）、删除文件(delete_file)、显示文件内容(typefile) 、改变文件属性(change)、
 # 创建目录(md)、列表目录(dir)、删除空目录(rd)、查看FAT表(fat_show)、格式化虚拟磁盘(format_disk)
 def create_file(*args):
-    global current_dir_files
+    # global current_dir_files
     '''创建文件:create_file filename'''
     if len(args) != 1:
         print(create_file.__doc__)
@@ -600,11 +611,14 @@ def rd(*args):
     vdisk_listwrite(path_stack[-2][1], dir_files)
 
 
+# in q
+#     exit(0)
+# SystemExit: 0
 def q(*args):
     '''退出程序'''
-    print('Bye!')
     vdisk_close()
-    exit(0)
+    print('Bye!')
+    os._exit(0)
 
 
 operator_dict = {'create_file': create_file, 'open_file': open_file, 'close_file': close_file,
@@ -623,15 +637,27 @@ def not_found(*args):
 
 
 # 程序开始
+# bug:current_dir_files不更新
+# /]>>>create_file a
+# 文件创建成功
+# /]>>>dir
+# /]>>>
 vdisk_init()
 print('==============================虚拟磁盘文件管理==============================')
 print('键入h查看帮助')
 while True:
-    cmds = input(vdisk_gwd() + ']>>>')
-    if cmds == '':
-        continue
-    if cmds == 'h':
-        h()
-        continue
-    cmds = cmds.split()
-    operator_dict.get(cmds[0], not_found)(*cmds[1:])
+    try:
+        cmds = input(vdisk_gwd() + ']>>>')
+        if cmds == '':
+            continue
+        if cmds == 'h':
+            h()
+            continue
+        cmds = cmds.split()
+        operator_dict.get(cmds[0], not_found)(*cmds[1:])
+        current_dir_files = vdisk_listread(FAT_SIZE)
+    except:
+        print('出现异常, 程序即将退出')
+        traceback.print_exc()
+        break
+q()
