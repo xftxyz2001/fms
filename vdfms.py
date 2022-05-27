@@ -130,11 +130,14 @@ def vdisk_readblocks(block_num):
 def vdisk_writeblocks(block_numlist, data):
     if len(data) // BLOCK_SIZE > len(block_numlist):
         data = data[:len(block_numlist) * BLOCK_SIZE]
-    for i in range(len(data) // BLOCK_SIZE):
+    # for i in range(len(data) // BLOCK_SIZE):
+    #     vdisk_writeblock(
+    #         block_numlist[i], data[i * BLOCK_SIZE: (i + 1) * BLOCK_SIZE])
+    # if len(data) % BLOCK_SIZE != 0:
+    #     vdisk_writeblock(block_numlist[-1], data[i * BLOCK_SIZE:])
+    for i in range(len(block_numlist)):
         vdisk_writeblock(
             block_numlist[i], data[i * BLOCK_SIZE: (i + 1) * BLOCK_SIZE])
-    if len(data) % BLOCK_SIZE != 0:
-        vdisk_writeblock(block_numlist[-1], data[-len(data) % BLOCK_SIZE:])
 
 
 # 解码目录项
@@ -184,6 +187,8 @@ def vdisk_listread(block_num):
         fileinfo = get_fileinfo(blocks[i*8:i*8+8])
         if len(fileinfo) > 0:
             dir_files.append(fileinfo)
+        else:
+            break
     return dir_files
 
 

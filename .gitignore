@@ -160,4 +160,4 @@ cython_debug/
 #.idea/
 
 # 程序生成的文件
-.dat
+vdisk.dat
