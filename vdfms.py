@@ -127,6 +127,9 @@ def vdisk_readblocks(block_num):
 
 
 # 写入一系列块
+# bug:in vdisk_writeblocks 已修复
+#     for i in range(block_numlist):
+# TypeError: 'list' object cannot be interpreted as an integer
 def vdisk_writeblocks(block_numlist, data):
     if len(data) // BLOCK_SIZE > len(block_numlist):
         data = data[:len(block_numlist) * BLOCK_SIZE]
@@ -193,12 +196,15 @@ def vdisk_listread(block_num):
 
 
 # 申请n个块的空间，返回空闲块号列表
-def vdisk_alloc(n, start=-1):
+# bug:in vdisk_alloc 已修复
+#     FAT[start] = END_FLAG
+# IndexError: list assignment index out of range
+def vdisk_alloc(n, start=END_FLAG):
     # if n <= 0:
     #     return []
     global FAT
     block_numlist = []
-    if start != -1:
+    if start != END_FLAG:
         block_numlist.append(start)
         FAT[start] = END_FLAG
         n -= 1
@@ -241,9 +247,10 @@ def vdisk_listwrite(block_num, dir_files):
 
 
 # 虚拟磁盘初始化、加载
-def vdisk_init():
+# 手动格式化无效
+def vdisk_init(flag):
     global vdisk, dir_stack, current_dir_files
-    if not os.path.exists(FILE_NAME) or os.path.getsize(FILE_NAME) == 0:
+    if flag or not os.path.exists(FILE_NAME) or os.path.getsize(FILE_NAME) == 0:
         vdisk_create()
     vdisk = open(FILE_NAME, 'rb+')
     fat_read()
@@ -257,12 +264,13 @@ def format_disk(*args):
     global vdisk
     print("格式化磁盘将会清除原有数据，是否继续？(y/n)")
     if input().upper() != 'Y':
+        print("格式化已取消")
         return
     vdisk.close()
-    vdisk_init()
+    vdisk_init(True)
 
 
-# in vdisk_gwd
+# bug:in vdisk_gwd 已修复
 #     return '/'.join(ds)
 # TypeError: sequence item 0: expected str instance, list found
 def vdisk_gwd(*args):
@@ -283,13 +291,14 @@ def get_attributes_string(fileattribute):
 
 
 def show_diritems(dir_files):
+    print('filename\tfiletype\tfileattribute\tfilestart\tfilelength')
     for filename, filetype, fileattribute, filestart, filelength in dir_files:
-        print('{:4s}\t{:3s}\t{:9s}\t{:4d}\t{:d}'.format(
+        print('{:4s}\t\t{:3s}\t\t{:9s}\t{:4d}\t\t{:d}'.format(
             filename, filetype, get_attributes_string(fileattribute), filestart, filelength))
 
 
 # 路径解析，返回该目录的绝对路径栈
-# bug:创建文件后当前路径改变
+# bug:创建文件后当前路径改变 已修复
 # /]>>>md a
 # 目录创建成功
 # /a]>>>
@@ -305,14 +314,14 @@ def path_decode(spath):
             if len(mypath) > 1:
                 mypath.pop()
         elif p != '':
-            flat = False
+            flag = False
             for filename, filetype, fileattribute, filestart, filelength in temp_dir_files:
                 if filename == p:
                     mypath.append([p, filestart])
                     temp_dir_files = vdisk_listread(filestart)
-                    flat = True
+                    flag = True
                     break
-            if not flat:
+            if not flag:
                 mypath.append([p, NOT_FOUND_FLAG])
         else:
             mypath = [['', FAT_SIZE]]
@@ -335,15 +344,33 @@ def path_exist(path_stack):
 
 # 判断路径是否是目录，只有当前路径存在时有意义
 def path_isdir(path_stack):
-    if len(path_stack) == 1:
+    if len(path_stack) <= 1:
         return True
-    # path_stack[-1]
+    dir_files = vdisk_listread(path_stack[-2][1])
+    for filename, filetype, fileattribute, filestart, filelength in dir_files:
+        if filename == path_stack[-1][0]:
+            if fileattribute & ATTRIBUTE_DIR != 0:
+                return True
+            else:
+                return False
+    return False
 
 
+# /]>>>read_file a
+# 不是文件
+# /]>>>dir
+# a       f       -----f--         255    0
 def path_isfile(path_stack):
-    if len(path_stack) == 1:
+    if len(path_stack) <= 1:
         return False
-    # path_stack[-1]
+    dir_files = vdisk_listread(path_stack[-2][1])
+    for filename, filetype, fileattribute, filestart, filelength in dir_files:
+        if filename == path_stack[-1][0]:
+            if fileattribute & ATTRIBUTE_FILE != 0:
+                return True
+            else:
+                return False
+    return False
 
 
 # 判断path1是否是path2的父路径
@@ -364,6 +391,11 @@ def show_open_files():
 
 
 # 递归创建目录
+# bug:目录显示为文件 已修复
+# /]>>>md a
+# 目录创建成功
+# /]>>>dir
+# a       d       -----f--         255    255
 def create_dir(path_stack):
     if len(path_stack) == 1:
         return path_stack[-1][1]
@@ -375,7 +407,7 @@ def create_dir(path_stack):
             print('目录已存在')
             return
     dir_files.append(
-        [path_stack[-1][0], 'd', ATTRIBUTE_FILE, END_FLAG, END_FLAG])
+        [path_stack[-1][0], 'd', ATTRIBUTE_DIR, END_FLAG, END_FLAG])
     vdisk_listwrite(path_stack[-2][1], dir_files)
     print('目录创建成功')
 
@@ -463,6 +495,12 @@ def read_file(*args):
     print(content)
 
 
+# bug:in write_file 已修复
+#     block_numlist = vdisk_alloc(math.ceil(filelength / BLOCK_SIZE), 'f')
+# in vdisk_alloc
+#     FAT[start] = END_FLAG
+# TypeError: list indices must be integers or slices, not str
+# bug: 写入的文件无法读取 已修复
 def write_file(*args):
     '''写文件:write_file filename data'''
     if len(args) < 1:
@@ -488,12 +526,16 @@ def write_file(*args):
         content += ' '.join(args[1:])
     context = bytes(content, encoding='ascii')
     filelength = len(context)
-    dir_files[i] = [filename, filetype, fileattribute, filestart, filelength]
+
+    # 先申请空间
+    vdisk_free(filestart)
+    block_numlist = vdisk_alloc(math.ceil(filelength / BLOCK_SIZE), filestart)
+
     # 更新属性
+    dir_files[i] = [filename, filetype,
+                    fileattribute, block_numlist[0], filelength]
     vdisk_listwrite(path_stack[-2][1], dir_files)
     # 更新文件
-    vdisk_free(filestart)
-    block_numlist = vdisk_alloc(math.ceil(filelength / BLOCK_SIZE), 'f')
     vdisk_writeblocks(block_numlist, context)
 
 
@@ -616,7 +658,7 @@ def rd(*args):
     vdisk_listwrite(path_stack[-2][1], dir_files)
 
 
-# in q
+# bug:in q 已修复
 #     exit(0)
 # SystemExit: 0
 def q(*args):
@@ -642,12 +684,12 @@ def not_found(*args):
 
 
 # 程序开始
-# bug:current_dir_files不更新
+# bug:current_dir_files不更新 已修复
 # /]>>>create_file a
 # 文件创建成功
 # /]>>>dir
 # /]>>>
-vdisk_init()
+vdisk_init(False)
 print('==============================虚拟磁盘文件管理==============================')
 print('键入h查看帮助')
 while True:
